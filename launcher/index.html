@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LLM Forfiles Launcher</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #101316;
+        color: #e8edf0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(180deg, rgba(43, 167, 184, .16), transparent 360px), #101316;
+      }
+      main {
+        width: min(920px, calc(100vw - 32px));
+        border: 1px solid #2a3238;
+        border-radius: 10px;
+        background: #171b1f;
+        box-shadow: 0 24px 80px rgba(0,0,0,.35);
+        overflow: hidden;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: center;
+        padding: 22px 24px;
+        border-bottom: 1px solid #2a3238;
+      }
+      h1 { margin: 0; font-size: 22px; }
+      p { margin: 6px 0 0; color: #91a0a8; }
+      button {
+        height: 40px;
+        padding: 0 18px;
+        border: 1px solid #45bac8;
+        border-radius: 8px;
+        background: #173036;
+        color: #dff9fc;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      button:disabled { opacity: .55; cursor: default; }
+      section { padding: 20px 24px; }
+      .bar {
+        height: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #0f1418;
+      }
+      .fill {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: #2ba7b8;
+        box-shadow: 0 0 18px rgba(43, 167, 184, .45);
+        transition: width .25s ease;
+      }
+      .status {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        margin: 14px 0;
+      }
+      .status strong { color: #f4f7f8; }
+      .status span { color: #45bac8; font-weight: 900; }
+      .detail {
+        min-height: 22px;
+        color: #91a0a8;
+        font-size: 14px;
+      }
+      .logs {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 330px;
+        overflow: auto;
+        margin-top: 18px;
+        padding: 12px;
+        border: 1px solid #2a3238;
+        border-radius: 8px;
+        background: #111519;
+      }
+      .log {
+        display: grid;
+        grid-template-columns: 76px 48px minmax(160px, .8fr) minmax(0, 1fr);
+        gap: 10px;
+        color: #b9c5cb;
+        font-size: 13px;
+      }
+      .log b { color: #e0a847; font-variant-numeric: tabular-nums; }
+      .log small { overflow: hidden; color: #7f8f98; text-overflow: ellipsis; white-space: nowrap; }
+      .hint {
+        border-top: 1px solid #2a3238;
+        color: #83929a;
+        font-size: 13px;
+      }
+      a { color: #45bac8; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>LLM Forfiles Launcher</h1>
+          <p>Prepara Ollama, modelo local, backend e abre o app local.</p>
+        </div>
+        <button id="start">Start app</button>
+      </header>
+      <section>
+        <div class="status">
+          <strong id="message">Aguardando start</strong>
+          <span id="percent">0%</span>
+        </div>
+        <div class="bar"><div class="fill" id="fill"></div></div>
+        <div class="detail" id="detail"></div>
+        <div class="logs" id="logs"></div>
+      </section>
+      <section class="hint">
+        Esta tela e controlada por um processo Python local. O navegador sozinho nao instala programas nem inicia servidores.
+        Depois de pronto, o app abre em <a id="app-link" href="#">localhost</a>.
+      </section>
+    </main>
+    <script>
+      const start = document.getElementById('start');
+      const fill = document.getElementById('fill');
+      const percent = document.getElementById('percent');
+      const message = document.getElementById('message');
+      const detail = document.getElementById('detail');
+      const logs = document.getElementById('logs');
+      const appLink = document.getElementById('app-link');
+
+      start.addEventListener('click', async () => {
+        start.disabled = true;
+        await fetch('/api/start', { method: 'POST' });
+      });
+
+      async function poll() {
+        const response = await fetch('/api/status');
+        const state = await response.json();
+        fill.style.width = `${state.percent || 0}%`;
+        percent.textContent = `${Math.round(state.percent || 0)}%`;
+        message.textContent = state.message || '';
+        detail.textContent = state.detail || '';
+        if (state.frontend_url) {
+          appLink.href = state.frontend_url;
+          appLink.textContent = state.frontend_url;
+        }
+        logs.innerHTML = (state.logs || []).slice().reverse().map((item) => `
+          <div class="log">
+            <b>${item.time}</b>
+            <b>${Math.round(item.percent)}%</b>
+            <span>${escapeHtml(item.message || '')}</span>
+            <small>${escapeHtml(item.detail || '')}</small>
+          </div>`).join('');
+        if (!state.running && (state.done || state.failed)) start.disabled = false;
+      }
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      }
+      setInterval(poll, 900);
+      poll();
+    </script>
+  </body>
+</html>
