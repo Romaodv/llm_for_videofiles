@@ -368,7 +368,10 @@ def ensure_frontend_dist() -> None:
 
     npm = shutil.which("npm")
     if not npm:
-        raise RuntimeError("frontend/dist nao existe e npm nao foi encontrado. Gere o pacote em uma maquina com Node usando scripts/build_portable.py.")
+        if platform.system().lower() == "windows":
+            npm = install_node_with_winget_windows()
+        if not npm:
+            raise RuntimeError("frontend/dist nao existe e npm nao foi encontrado. Gere o pacote em uma maquina com Node usando scripts/build_portable.py.")
 
     log("frontend", 64, "Atualizando dependencias frontend", "npm install")
     run_command([npm, "install"], ROOT / "frontend", 64, 70)
@@ -378,6 +381,56 @@ def ensure_frontend_dist() -> None:
 
     if not index.exists():
         raise RuntimeError("Build do frontend terminou, mas frontend/dist/index.html nao foi encontrado.")
+
+
+def install_node_with_winget_windows() -> str | None:
+    winget = shutil.which("winget")
+    if not winget:
+        log("frontend", 60, "Winget nao encontrado", "Instale Node.js LTS para gerar o frontend")
+        return None
+
+    command = [
+        winget,
+        "install",
+        "-e",
+        "--id",
+        "OpenJS.NodeJS.LTS",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+        "--silent",
+    ]
+    log("frontend", 58, "Instalando Node.js LTS via winget", " ".join(command))
+    result = subprocess.run(
+        command,
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+        timeout=900,
+    )
+    if result.returncode != 0:
+        log("frontend", 60, "Winget nao instalou Node.js", compact(result.stdout))
+        return None
+
+    refresh_windows_path()
+    npm = shutil.which("npm") or find_npm_in_common_windows_locations()
+    if npm:
+        log("frontend", 62, "Node.js pronto", npm)
+    return npm
+
+
+def find_npm_in_common_windows_locations() -> str | None:
+    candidates: list[Path] = []
+    for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+        value = os.environ.get(env_name)
+        if value:
+            candidates.append(Path(value) / "nodejs" / "npm.cmd")
+    for candidate in candidates:
+        if candidate.exists():
+            add_to_path(candidate.parent)
+            return str(candidate)
+    return None
 
 
 def run_command(command: list[str], cwd: Path, start_percent: float, end_percent: float) -> None:

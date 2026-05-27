@@ -199,20 +199,24 @@ button {
   z-index: 50;
   display: grid;
   place-items: start center;
-  padding: 72px 18px 18px;
+  padding: clamp(18px, 8vh, 72px) 18px 18px;
   background: rgba(7, 10, 12, 0.68);
+  overflow: hidden;
 }
 
 .config-modal {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: min(620px, 100%);
-  padding: 14px;
+  gap: clamp(8px, 1.4vh, 12px);
+  width: min(720px, 100%);
+  max-height: calc(100dvh - clamp(18px, 8vh, 72px) - 18px);
+  padding: clamp(10px, 1.8vh, 14px);
   border: 1px solid #38454d;
   border-radius: 8px;
   background: #1b2025;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .config-head {
@@ -300,7 +304,7 @@ button {
 }
 
 .summary-mode-options {
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .transcription-form {
