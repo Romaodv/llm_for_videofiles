@@ -70,6 +70,14 @@ def init_db() -> None:
                 summary TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS document_summaries (
+                document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                markdown TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                generated_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
             CREATE INDEX IF NOT EXISTS idx_topics_document_id ON topics(document_id);
             CREATE INDEX IF NOT EXISTS idx_cues_document_id ON transcript_cues(document_id);

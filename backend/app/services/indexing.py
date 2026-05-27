@@ -24,6 +24,9 @@ class IndexingService:
         reindex: bool = False,
         transcribe: bool = True,
         category: str = "Sem categoria",
+        transcription_provider: str = "local",
+        whisper_cpu_threads: int | None = None,
+        whisper_model: str | None = None,
         progress: ProgressCallback | None = None,
     ) -> dict:
         video_path = video_path.expanduser().resolve()
@@ -47,7 +50,13 @@ class IndexingService:
                 return {"document_id": existing["id"], "status": "unchanged", "chunk_count": existing["chunk_count"]}
 
         if transcribe:
-            transcript_path, cues = TranscriptionService().transcribe_to_srt(video_path, progress)
+            transcript_path, cues = TranscriptionService().transcribe_to_srt(
+                video_path,
+                progress,
+                whisper_cpu_threads,
+                whisper_model,
+                transcription_provider,
+            )
         else:
             transcript_path = video_path.with_suffix(".srt")
             if not transcript_path.exists():
@@ -126,34 +135,11 @@ class IndexingService:
                     ),
                 )
 
+            conn.execute("DELETE FROM topics WHERE document_id = ?", (document_id,))
+            conn.execute("DELETE FROM document_summaries WHERE document_id = ?", (document_id,))
             if progress:
-                progress("topics", 94, "Criando topicos iniciais", "Resumo local por blocos para navegacao rapida")
-            seed_topics(conn, document_id)
-            if progress:
-                progress("sqlite", 98, "Finalizando persistencia", "Embeddings, chunks, SRT e topicos salvos")
+                progress("sqlite", 98, "Finalizando persistencia", "Embeddings, chunks e SRT salvos; topicos ficam sob demanda via DeepSeek")
             return {"document_id": document_id, "status": "indexed", "chunk_count": len(chunks)}
-
-
-def seed_topics(conn, document_id: int) -> None:
-    rows = conn.execute(
-        """
-        SELECT chunk_index, start_seconds, end_seconds, text
-        FROM chunks
-        WHERE document_id = ?
-        ORDER BY chunk_index
-        """,
-        (document_id,),
-    ).fetchall()
-    conn.execute("DELETE FROM topics WHERE document_id = ?", (document_id,))
-    for row in rows[::2]:
-        title = row["text"].split(".")[0][:80].strip() or f"Trecho {row['chunk_index'] + 1}"
-        conn.execute(
-            """
-            INSERT INTO topics (document_id, start_seconds, end_seconds, title, summary)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (document_id, row["start_seconds"], row["end_seconds"], title, row["text"][:320]),
-        )
 
 
 def clean_category(value: str) -> str:

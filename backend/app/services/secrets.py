@@ -7,6 +7,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from backend.app.config import settings
 
 PROVIDER_DEEPSEEK = "deepseek"
+PROVIDER_GROQ = "groq"
 
 
 def save_secret(provider: str, secret: str) -> dict:

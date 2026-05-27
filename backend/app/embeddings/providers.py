@@ -2,10 +2,6 @@ import hashlib
 import math
 from abc import ABC, abstractmethod
 
-import httpx
-
-from backend.app.config import settings
-
 
 class BaseEmbeddingProvider(ABC):
     name: str
@@ -36,22 +32,6 @@ class HashingEmbeddingProvider(BaseEmbeddingProvider):
         return [value / norm for value in vector]
 
 
-class OllamaEmbeddingProvider(BaseEmbeddingProvider):
-    name = "ollama"
-
-    def __init__(self) -> None:
-        self.model = settings.ollama_embedding_model
-
-    def embed(self, text: str) -> list[float]:
-        response = httpx.post(
-            f"{settings.ollama_base_url}/api/embeddings",
-            json={"model": self.model, "prompt": text},
-            timeout=60,
-        )
-        response.raise_for_status()
-        return [float(value) for value in response.json()["embedding"]]
-
-
 def re_tokens(text: str) -> list[str]:
     import re
 
@@ -59,6 +39,4 @@ def re_tokens(text: str) -> list[str]:
 
 
 def get_embedding_provider() -> BaseEmbeddingProvider:
-    if settings.embedding_provider == "ollama":
-        return OllamaEmbeddingProvider()
     return HashingEmbeddingProvider()

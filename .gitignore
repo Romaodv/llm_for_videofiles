@@ -24,6 +24,7 @@ ENV/
 
 # Local app data, generated transcripts, SQLite, secrets and converted media
 .local_data/
+.local_tools/
 *.sqlite3
 *.sqlite3-*
 *.db
@@ -61,3 +62,6 @@ Thumbs.db
 # Generated portable package output
 # Note: this also ignores Python build dist/ above.
 dist/
+
+
+AGENTS.md

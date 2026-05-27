@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
+from multiprocessing import Process, Queue
 from pathlib import Path
+from queue import Empty
 from threading import Thread
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -11,8 +14,8 @@ from backend.app.embeddings.providers import get_embedding_provider
 from backend.app.llm.providers import get_llm_provider
 from backend.app.services.indexing import IndexingService
 from backend.app.services.progress import jobs
-from backend.app.services.secrets import PROVIDER_DEEPSEEK, delete_secret, save_secret, secret_status
-from backend.app.services.topics import summarize_document_topics_local
+from backend.app.services.secrets import PROVIDER_DEEPSEEK, PROVIDER_GROQ, delete_secret, save_secret, secret_status
+from backend.app.services.topics import get_document_summary, summarize_document_presentation, summarize_document_topics
 from backend.app.services.video_media import build_web_video, get_playable_video_path
 from backend.app.vectorstore.sqlite_vector import SqliteVectorStore
 
@@ -49,7 +52,15 @@ def list_files(path: str | None = None) -> dict:
 @router.post("/videos/index")
 def index_video(request: IndexVideoRequest) -> dict:
     try:
-        return IndexingService().index_video(Path(request.path), request.reindex, request.transcribe, request.category)
+        return IndexingService().index_video(
+            Path(request.path),
+            request.reindex,
+            request.transcribe,
+            request.category,
+            request.transcription_provider,
+            request.whisper_cpu_threads,
+            request.whisper_model,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -59,22 +70,98 @@ def index_video(request: IndexVideoRequest) -> dict:
 @router.post("/videos/index/jobs")
 def start_index_video_job(request: IndexVideoRequest) -> dict:
     job = jobs.create("video_index")
-
-    def run() -> None:
-        try:
-            result = IndexingService().index_video(
-                Path(request.path),
-                request.reindex,
-                request.transcribe,
-                request.category,
-                progress=lambda phase, percent, message, detail="": jobs.update(job.id, phase, percent, message, detail),
-            )
-            jobs.finish(job.id, result)
-        except Exception as exc:  # noqa: BLE001 - expose clear job failure to local UI.
-            jobs.fail(job.id, str(exc))
-
-    Thread(target=run, daemon=True).start()
+    queue: Queue = Queue()
+    process = Process(
+        target=run_index_video_worker,
+        args=(
+            queue,
+            request.path,
+            request.reindex,
+            request.transcribe,
+            request.category,
+            request.transcription_provider,
+            request.whisper_cpu_threads,
+            request.whisper_model,
+        ),
+        daemon=True,
+    )
+    process.start()
+    Thread(target=monitor_index_video_worker, args=(job.id, process, queue), daemon=True).start()
     return {"job_id": job.id}
+
+
+def run_index_video_worker(
+    queue: Queue,
+    path: str,
+    reindex: bool,
+    transcribe: bool,
+    category: str,
+    transcription_provider: str,
+    whisper_cpu_threads: int | None,
+    whisper_model: str | None,
+) -> None:
+    try:
+        try:
+            import os
+
+            os.nice(5)
+        except OSError:
+            pass
+
+        def progress(phase: str, percent: float, message: str, detail: str = "") -> None:
+            queue.put({"type": "progress", "phase": phase, "percent": percent, "message": message, "detail": detail})
+
+        result = IndexingService().index_video(
+            Path(path),
+            reindex,
+            transcribe,
+            category,
+            transcription_provider,
+            whisper_cpu_threads,
+            whisper_model,
+            progress=progress,
+        )
+        queue.put({"type": "finish", "result": result})
+    except Exception as exc:  # noqa: BLE001 - child process must report operational failures.
+        queue.put({"type": "fail", "error": str(exc)})
+
+
+def monitor_index_video_worker(job_id: str, process: Process, queue: Queue) -> None:
+    finished = False
+    while True:
+        try:
+            event: dict[str, Any] = queue.get(timeout=1)
+        except Empty:
+            if not process.is_alive():
+                break
+            continue
+
+        event_type = event.get("type")
+        if event_type == "progress":
+            jobs.update(
+                job_id,
+                str(event.get("phase", "running")),
+                float(event.get("percent", 0)),
+                str(event.get("message", "Processando")),
+                str(event.get("detail", "")),
+            )
+        elif event_type == "finish":
+            jobs.finish(job_id, event.get("result") or {})
+            finished = True
+            break
+        elif event_type == "fail":
+            jobs.fail(job_id, str(event.get("error", "Falha no processamento")))
+            finished = True
+            break
+
+    process.join(timeout=2)
+    if not finished:
+        exit_code = process.exitcode
+        if exit_code not in (0, None):
+            jobs.fail(job_id, f"Worker de indexacao encerrou inesperadamente com codigo {exit_code}")
+        elif exit_code == 0:
+            jobs.fail(job_id, "Worker de indexacao encerrou sem retornar resultado")
+
 
 
 @router.get("/jobs/{job_id}")
@@ -103,6 +190,24 @@ def delete_deepseek_secret() -> dict:
     return delete_secret(PROVIDER_DEEPSEEK)
 
 
+@router.get("/settings/secrets/groq")
+def get_groq_secret_status() -> dict:
+    return secret_status(PROVIDER_GROQ)
+
+
+@router.post("/settings/secrets/groq")
+def save_groq_secret(request: SaveSecretRequest) -> dict:
+    try:
+        return save_secret(PROVIDER_GROQ, request.api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/settings/secrets/groq")
+def delete_groq_secret() -> dict:
+    return delete_secret(PROVIDER_GROQ)
+
+
 @router.get("/documents")
 def list_documents() -> list[dict]:
     with get_connection() as conn:
@@ -124,6 +229,16 @@ def get_document(document_id: int) -> dict:
         if not row:
             raise HTTPException(status_code=404, detail="Documento nao encontrado")
         return dict(row)
+
+
+@router.delete("/documents/{document_id}")
+def delete_document(document_id: int) -> dict:
+    with get_connection() as conn:
+        row = conn.execute("SELECT id, file_name FROM documents WHERE id = ?", (document_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Documento nao encontrado")
+        conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+        return {"deleted": True, "document_id": document_id, "file_name": row["file_name"]}
 
 
 @router.put("/documents/{document_id}/save")
@@ -186,11 +301,49 @@ def get_topics(document_id: int) -> list[dict]:
 
 
 @router.post("/documents/{document_id}/topics/summarize")
-def summarize_topics(document_id: int) -> list[dict]:
+def summarize_topics(
+    document_id: int,
+    llm_provider: str = Query("deepseek"),
+    groq_llm_model: str | None = Query(None),
+    summary_strategy: str = Query("auto"),
+) -> list[dict]:
     try:
-        return summarize_document_topics_local(document_id)
+        return summarize_document_topics(
+            document_id,
+            provider_name=llm_provider,
+            provider_model=groq_llm_model,
+            summary_strategy=summary_strategy,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/documents/{document_id}/summary")
+def document_summary(document_id: int) -> dict:
+    return get_document_summary(document_id)
+
+
+@router.post("/documents/{document_id}/summary")
+def summarize_presentation(
+    document_id: int,
+    llm_provider: str = Query("deepseek"),
+    groq_llm_model: str | None = Query(None),
+    summary_strategy: str = Query("auto"),
+) -> dict:
+    try:
+        return summarize_document_presentation(
+            document_id,
+            provider_name=llm_provider,
+            provider_model=groq_llm_model,
+            summary_strategy=summary_strategy,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 @router.post("/documents/{document_id}/media/jobs")
 def start_web_media_job(document_id: int) -> dict:
@@ -235,7 +388,7 @@ def ask(request: AskRequest) -> dict:
     with get_connection() as conn:
         hits = SqliteVectorStore(conn).search(query_vector, request.top_k, request.document_id)
     history = [item.model_dump() for item in request.history[-8:]]
-    answer = get_llm_provider(request.mode).answer(request.question, hits, history, request.cloud_api_key)
+    answer = get_llm_provider(request.llm_provider, request.groq_llm_model).answer(request.question, hits, history, request.cloud_api_key)
     return {"answer": answer, "sources": [hit.__dict__ for hit in hits], "mode": request.mode}
 
 

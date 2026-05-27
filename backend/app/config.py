@@ -19,20 +19,24 @@ class Settings:
         self.secrets_path = Path(os.getenv("LLM_FORFILES_SECRETS", self.data_dir / "secrets.json")).resolve()
         self.secret_key_path = Path(os.getenv("LLM_FORFILES_SECRET_KEY_FILE", self.data_dir / "secret.key")).resolve()
 
-        self.embedding_provider = os.getenv("EMBEDDING_PROVIDER", "hashing").lower()
-        self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-        self.ollama_embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
-        self.ollama_llm_model = os.getenv("OLLAMA_LLM_MODEL", "qwen2.5:3b")
-        self.ollama_topic_model = os.getenv("OLLAMA_TOPIC_MODEL", "qwen2.5:3b")
+        self.embedding_provider = "hashing"
 
-        self.llm_provider = os.getenv("LLM_PROVIDER", "deepseek").lower()
+        self.llm_provider = "deepseek"
         self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "")
         self.deepseek_base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
         self.deepseek_model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
+        self.groq_api_key = os.getenv("GROQ_API_KEY", "")
+        self.groq_base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+        self.groq_whisper_model = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
+        self.groq_llm_model = os.getenv("GROQ_LLM_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+        self.groq_transcription_language = os.getenv("GROQ_TRANSCRIPTION_LANGUAGE", "")
+        self.groq_max_upload_bytes = int(os.getenv("GROQ_MAX_UPLOAD_BYTES", str(24 * 1024 * 1024)))
+
         self.whisper_model = os.getenv("WHISPER_MODEL", "small")
         self.whisper_device = os.getenv("WHISPER_DEVICE", "cpu")
         self.whisper_compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+        self.whisper_cpu_threads = int(os.getenv("WHISPER_CPU_THREADS", "2"))
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

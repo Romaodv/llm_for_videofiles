@@ -8,12 +8,12 @@ import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
 import webbrowser
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -24,9 +24,10 @@ HOST = "127.0.0.1"
 LAUNCHER_PORT = int(os.getenv("LLM_FORFILES_LAUNCHER_PORT", "8765"))
 BACKEND_PORT = int(os.getenv("LLM_FORFILES_BACKEND_PORT", "8000"))
 FRONTEND_PORT = int(os.getenv("LLM_FORFILES_FRONTEND_PORT", str(BACKEND_PORT)))
-OLLAMA_PORT = int(os.getenv("OLLAMA_PORT", "11434"))
-OLLAMA_MODEL = os.getenv("OLLAMA_TOPIC_MODEL", "qwen2.5:3b")
 VENV_DIR = ROOT / ".venv"
+LOCAL_TOOLS_DIR = ROOT / ".local_tools"
+FFMPEG_URL = os.getenv("LLM_FORFILES_FFMPEG_URL", "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip")
+LOCAL_FFMPEG_DIR = LOCAL_TOOLS_DIR / "ffmpeg"
 
 STATE_LOCK = threading.Lock()
 STATE: dict[str, Any] = {
@@ -66,6 +67,20 @@ def log(phase: str, percent: float, message: str, detail: str = "") -> None:
         STATE["logs"] = STATE["logs"][-160:]
 
 
+def append_log(phase: str, message: str, detail: str = "") -> None:
+    with STATE_LOCK:
+        STATE["logs"].append(
+            {
+                "time": time.strftime("%H:%M:%S"),
+                "phase": phase,
+                "percent": STATE["percent"],
+                "message": message,
+                "detail": detail,
+            }
+        )
+        STATE["logs"] = STATE["logs"][-160:]
+
+
 def run_startup() -> None:
     with STATE_LOCK:
         if STATE["running"]:
@@ -78,12 +93,10 @@ def run_startup() -> None:
         log("python", 10, "Instalando dependencias no virtualenv", "pip install -e .")
         run_command([str(python_bin), "-m", "pip", "install", "-e", "."], ROOT, 10, 18)
 
-        log("ollama", 20, "Verificando Ollama", "Procurando binario e API local")
-        ensure_ollama_installed()
-        ensure_ollama_running()
-        ensure_ollama_model()
+        log("media", 20, "Verificando FFmpeg", "Necessario para audio/video local")
+        ensure_ffmpeg_available()
 
-        log("frontend", 62, "Verificando frontend buildado", "frontend/dist")
+        log("frontend", 24, "Verificando frontend buildado", "frontend/dist")
         ensure_frontend_dist()
 
         log("backend", 82, "Iniciando backend", f"porta {BACKEND_PORT}")
@@ -157,70 +170,74 @@ def command_ok(command: list[str]) -> bool:
     except OSError:
         return False
 
-def ensure_ollama_installed() -> None:
-    if shutil.which("ollama"):
-        log("ollama", 24, "Ollama encontrado", shutil.which("ollama") or "")
+
+def ensure_ffmpeg_available() -> None:
+    existing = shutil.which("ffmpeg")
+    if existing:
+        log("media", 23, "FFmpeg encontrado", existing)
         return
 
-    if platform.system().lower() != "linux":
-        raise RuntimeError("Ollama nao encontrado. Instalacao automatica foi implementada apenas para Linux.")
-
-    log("ollama", 25, "Instalando Ollama", "Baixando instalador oficial de https://ollama.com/install.sh")
-    installer_url = "https://ollama.com/install.sh"
-    with urllib.request.urlopen(installer_url, timeout=60) as response:
-        script = response.read()
-
-    with tempfile.NamedTemporaryFile("wb", delete=False, suffix="-ollama-install.sh") as file:
-        file.write(script)
-        temp_script = Path(file.name)
-
-    try:
-        temp_script.chmod(0o700)
-        run_command(["sh", str(temp_script)], ROOT, 26, 36)
-    finally:
-        temp_script.unlink(missing_ok=True)
-
-    if not shutil.which("ollama"):
-        raise RuntimeError("O instalador terminou, mas o comando ollama ainda nao apareceu no PATH. Abra um novo terminal ou instale manualmente.")
-
-
-def ensure_ollama_running() -> None:
-    if http_ok(f"http://{HOST}:{OLLAMA_PORT}/api/tags"):
-        log("ollama", 38, "Ollama ja esta rodando", f"http://{HOST}:{OLLAMA_PORT}")
+    local_ffmpeg = find_local_ffmpeg()
+    if local_ffmpeg:
+        add_to_path(local_ffmpeg.parent)
+        log("media", 23, "FFmpeg local configurado", str(local_ffmpeg))
         return
 
-    log("ollama", 39, "Executando Ollama em background", "ollama serve")
-    proc = subprocess.Popen(
-        ["ollama", "serve"],
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    PROCESSES["ollama"] = proc
-
-    wait_for_http(f"http://{HOST}:{OLLAMA_PORT}/api/tags", 45, "Ollama nao respondeu em 45s")
-    log("ollama", 46, "Ollama online", f"http://{HOST}:{OLLAMA_PORT}")
-
-
-def ensure_ollama_model() -> None:
-    models = get_ollama_models()
-    if OLLAMA_MODEL in models:
-        log("model", 50, "Modelo Ollama ja instalado", OLLAMA_MODEL)
+    if platform.system().lower() != "windows":
+        log("media", 23, "FFmpeg nao encontrado", "Instale ffmpeg no PATH se precisar converter video para o navegador")
         return
 
-    log("model", 51, "Baixando modelo Ollama", f"ollama pull {OLLAMA_MODEL}")
-    run_command(["ollama", "pull", OLLAMA_MODEL], ROOT, 52, 60)
-    log("model", 61, "Modelo pronto", OLLAMA_MODEL)
+    download_ffmpeg_windows()
+    local_ffmpeg = find_local_ffmpeg()
+    if not local_ffmpeg:
+        raise RuntimeError("FFmpeg foi baixado, mas ffmpeg.exe nao foi encontrado no pacote extraido.")
+
+    add_to_path(local_ffmpeg.parent)
+    log("media", 23, "FFmpeg instalado localmente", str(local_ffmpeg))
 
 
-def get_ollama_models() -> set[str]:
-    try:
-        with urllib.request.urlopen(f"http://{HOST}:{OLLAMA_PORT}/api/tags", timeout=8) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except Exception:
-        return set()
-    return {item.get("name", "") for item in payload.get("models", [])}
+def find_local_ffmpeg() -> Path | None:
+    expected = LOCAL_FFMPEG_DIR / "bin" / "ffmpeg.exe"
+    if expected.exists():
+        return expected
+    for candidate in LOCAL_FFMPEG_DIR.glob("**/ffmpeg.exe"):
+        return candidate
+    return None
+
+
+def download_ffmpeg_windows() -> None:
+    LOCAL_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+    archive_path = LOCAL_TOOLS_DIR / "ffmpeg-release-essentials.zip"
+
+    log("media", 20.5, "Baixando FFmpeg para Windows", FFMPEG_URL)
+    urllib.request.urlretrieve(FFMPEG_URL, archive_path)
+
+    extract_root = LOCAL_TOOLS_DIR / "ffmpeg-extract"
+    if extract_root.exists():
+        shutil.rmtree(extract_root)
+    extract_root.mkdir(parents=True, exist_ok=True)
+
+    log("media", 21.5, "Extraindo FFmpeg", str(archive_path))
+    with zipfile.ZipFile(archive_path) as archive:
+        archive.extractall(extract_root)
+
+    ffmpeg_exe = next(extract_root.glob("**/ffmpeg.exe"), None)
+    if not ffmpeg_exe:
+        raise RuntimeError("Pacote do FFmpeg extraido, mas ffmpeg.exe nao foi encontrado.")
+
+    if LOCAL_FFMPEG_DIR.exists():
+        shutil.rmtree(LOCAL_FFMPEG_DIR)
+    shutil.move(str(ffmpeg_exe.parents[1]), str(LOCAL_FFMPEG_DIR))
+    archive_path.unlink(missing_ok=True)
+    shutil.rmtree(extract_root, ignore_errors=True)
+
+
+def add_to_path(directory: Path) -> None:
+    current_path = os.environ.get("PATH", "")
+    path_entries = current_path.split(os.pathsep) if current_path else []
+    directory_text = str(directory)
+    if directory_text not in path_entries:
+        os.environ["PATH"] = directory_text + os.pathsep + current_path if current_path else directory_text
 
 
 def ensure_backend_running(python_bin: Path) -> None:
@@ -233,20 +250,28 @@ def ensure_backend_running(python_bin: Path) -> None:
             "Pare esse processo antigo e clique Start app novamente. Exemplo: pkill -f 'uvicorn backend.app.main:app'."
         )
 
-    env = os.environ.copy()
-    env.setdefault("OLLAMA_TOPIC_MODEL", OLLAMA_MODEL)
-    env.setdefault("OLLAMA_LLM_MODEL", OLLAMA_MODEL)
     proc = subprocess.Popen(
         [str(python_bin), "-m", "uvicorn", "backend.app.main:app", "--host", HOST, "--port", str(BACKEND_PORT)],
         cwd=str(ROOT),
-        env=env,
+        env=os.environ.copy(),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        bufsize=1,
     )
     PROCESSES["backend"] = proc
+    threading.Thread(target=drain_process_output, args=("backend", proc), daemon=True).start()
     wait_for_http(f"http://{HOST}:{BACKEND_PORT}/health", 45, "Backend nao respondeu em 45s")
     log("backend", 94, "Backend online", f"http://{HOST}:{BACKEND_PORT}")
+
+
+def drain_process_output(name: str, proc: subprocess.Popen) -> None:
+    if proc.stdout is None:
+        return
+    for line in proc.stdout:
+        text = compact(line)
+        if text:
+            append_log(name, f"{name} log", text)
 
 
 def ensure_frontend_dist() -> None:
