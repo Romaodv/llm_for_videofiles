@@ -61,7 +61,29 @@ def create_start_scripts() -> None:
     linux.chmod(0o755)
 
     windows = OUT / "start.bat"
-    windows.write_text("@echo off\ncd /d %~dp0\npy scripts\\launcher.py\n", encoding="utf-8")
+    windows.write_text(
+        "\n".join(
+            [
+                "@echo off",
+                "cd /d %~dp0",
+                "",
+                "py -3 --version >nul 2>nul",
+                "if errorlevel 1 (",
+                "  echo Configurando Python padrao no Windows...",
+                "  py install default",
+                "  if errorlevel 1 (",
+                "    echo Nao foi possivel configurar o Python padrao. Instale o Python 3 e tente novamente.",
+                "    pause",
+                "    exit /b 1",
+                "  )",
+                ")",
+                "",
+                "py scripts\\launcher.py",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":
