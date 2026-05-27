@@ -17,6 +17,7 @@ from backend.app.services.progress import jobs
 from backend.app.services.secrets import PROVIDER_DEEPSEEK, PROVIDER_GROQ, delete_secret, save_secret, secret_status
 from backend.app.services.topics import get_document_summary, summarize_document_presentation, summarize_document_topics
 from backend.app.services.video_media import build_web_video, get_playable_video_path
+from backend.app.utils.platform import lower_process_priority
 from backend.app.vectorstore.sqlite_vector import SqliteVectorStore
 
 router = APIRouter()
@@ -101,12 +102,7 @@ def run_index_video_worker(
     whisper_model: str | None,
 ) -> None:
     try:
-        try:
-            import os
-
-            os.nice(5)
-        except OSError:
-            pass
+        lower_process_priority()
 
         def progress(phase: str, percent: float, message: str, detail: str = "") -> None:
             queue.put({"type": "progress", "phase": phase, "percent": percent, "message": message, "detail": detail})
