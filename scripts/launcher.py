@@ -187,6 +187,9 @@ def ensure_ffmpeg_available() -> None:
         log("media", 23, "FFmpeg nao encontrado", "Instale ffmpeg no PATH se precisar converter video para o navegador")
         return
 
+    if install_ffmpeg_with_winget_windows():
+        return
+
     download_ffmpeg_windows()
     local_ffmpeg = find_local_ffmpeg()
     if not local_ffmpeg:
@@ -194,6 +197,88 @@ def ensure_ffmpeg_available() -> None:
 
     add_to_path(local_ffmpeg.parent)
     log("media", 23, "FFmpeg instalado localmente", str(local_ffmpeg))
+
+
+def install_ffmpeg_with_winget_windows() -> bool:
+    winget = shutil.which("winget")
+    if not winget:
+        log("media", 20.5, "Winget nao encontrado", "Baixando FFmpeg pelo metodo portatil")
+        return False
+
+    command = [
+        winget,
+        "install",
+        "-e",
+        "--id",
+        "Gyan.FFmpeg.Essentials",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+        "--silent",
+    ]
+    log("media", 20.5, "Instalando FFmpeg via winget", " ".join(command))
+    result = subprocess.run(
+        command,
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+        timeout=600,
+    )
+    if result.returncode != 0:
+        log("media", 21, "Winget nao instalou FFmpeg", compact(result.stdout))
+        return False
+
+    refresh_windows_path()
+    installed = shutil.which("ffmpeg") or find_ffmpeg_in_common_windows_locations()
+    if not installed:
+        log("media", 21, "FFmpeg instalado, mas nao encontrado no PATH", "Baixando FFmpeg pelo metodo portatil")
+        return False
+
+    add_to_path(Path(installed).parent)
+    log("media", 23, "FFmpeg instalado via winget", installed)
+    return True
+
+
+def refresh_windows_path() -> None:
+    if platform.system().lower() != "windows":
+        return
+    try:
+        import winreg
+    except ImportError:
+        return
+
+    paths: list[str] = []
+    registry_paths = [
+        (winreg.HKEY_CURRENT_USER, r"Environment"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
+    ]
+    for root_key, sub_key in registry_paths:
+        try:
+            with winreg.OpenKey(root_key, sub_key) as key:
+                value, _value_type = winreg.QueryValueEx(key, "Path")
+                paths.append(value)
+        except OSError:
+            continue
+
+    current_path = os.environ.get("PATH", "")
+    combined = os.pathsep.join([current_path, *paths])
+    os.environ["PATH"] = os.path.expandvars(combined)
+
+
+def find_ffmpeg_in_common_windows_locations() -> str | None:
+    candidates: list[Path] = []
+    for env_name in ("LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"):
+        value = os.environ.get(env_name)
+        if value:
+            root = Path(value)
+            candidates.extend(root.glob("Microsoft/WinGet/Packages/Gyan.FFmpeg*/**/ffmpeg.exe"))
+            candidates.extend(root.glob("ffmpeg*/**/ffmpeg.exe"))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
 
 
 def find_local_ffmpeg() -> Path | None:
