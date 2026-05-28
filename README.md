@@ -62,6 +62,75 @@ dist/llm-forfiles-portable
 
 Essa pasta inclui o backend, frontend buildado, landing launcher e scripts `start.sh`/`start.bat`. Ela nao inclui `node_modules`, `.local_data` nem videos indexados. Na primeira execucao no outro PC, o launcher prepara dependencias e inicia o app.
 
+<<<<<<< HEAD
+=======
+## Desktop Electron
+
+Agora o projeto tambem pode rodar como app desktop standalone em Electron, sem abrir navegador nem usar a landing page do launcher.
+
+### Como funciona
+
+- O frontend React e carregado dentro de uma janela Electron.
+- O backend FastAPI sobe em segundo plano, com porta local aleatoria, sem expor uma pagina inicial no navegador.
+- Na primeira abertura, o app cria um virtualenv proprio em `userData/python-runtime`, instala as dependencias Python e depois reutiliza esse ambiente nas proximas execucoes.
+- Os dados persistentes continuam indo para a pasta de dados do app (`userData/data`), separada do codigo.
+
+### Desenvolvimento
+
+Instale as dependencias do Electron e do frontend:
+
+```bash
+npm install
+npm --prefix frontend install
+```
+
+Build do frontend + abertura do app Electron:
+
+```bash
+npm run desktop:dev
+```
+
+Se quiser forcar um Python especifico em desenvolvimento:
+
+```bash
+LLM_FORFILES_PYTHON_BIN=/caminho/para/python3 npm run desktop:dev
+```
+
+### Gerar pacote desktop
+
+Antes do build empacotado, coloque uma distribuicao Python completa com `venv` e `pip` em:
+
+```text
+vendor/python
+```
+
+Exemplos esperados:
+
+- Linux: `vendor/python/bin/python3`
+- Windows: `vendor/python/python.exe`
+
+Se quiser montar um bundle local rapidamente a partir do Python atual da maquina:
+
+```bash
+python3 scripts/build_python_bundle.py
+```
+
+Isso cria um runtime em `vendor/python` usando `venv --copies`, suficiente para o Electron incluir um Python proprio no pacote.
+
+Depois gere o pacote:
+
+```bash
+npm run desktop:dist
+```
+
+Saidas esperadas do `electron-builder`:
+
+- Windows: instalador `NSIS`
+- Linux: pacote `AppImage`
+
+Observacao importante: para o instalador funcionar em outra maquina sem Python preinstalado, o `vendor/python` precisa ser preenchido antes do build. Em modo de desenvolvimento, o app pode usar o Python local do sistema.
+
+>>>>>>> ec02679 (add: electron)
 ## Backend
 
 Instale dependencias:

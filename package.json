@@ -1,0 +1,66 @@
+{
+  "name": "llm-forfiles-desktop",
+  "version": "0.1.0",
+  "description": "Desktop shell for the local-first LLM Forfiles video knowledge explorer",
+  "author": "Gromao",
+  "private": true,
+  "main": "electron/main.cjs",
+  "scripts": {
+    "desktop:setup": "npm install && npm --prefix frontend install",
+    "desktop:ensure-electron": "node electron/ensure-electron.cjs",
+    "frontend:build": "npm --prefix frontend run build",
+    "desktop:dev": "npm run frontend:build && npm run desktop:ensure-electron && ./node_modules/.bin/electron .",
+    "desktop:dist": "npm run frontend:build && node electron/run-builder.cjs",
+    "desktop:pack": "npm run frontend:build && node electron/run-builder.cjs --dir"
+  },
+  "dependencies": {
+    "electron-log": "^5.4.1"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.gromao.llmforfiles",
+    "productName": "LLM Forfiles",
+    "directories": {
+      "buildResources": "electron/build"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend"
+      },
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "pyproject.toml",
+        "to": "pyproject.toml"
+      },
+      {
+        "from": "vendor/python",
+        "to": "python",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
+  }
+}

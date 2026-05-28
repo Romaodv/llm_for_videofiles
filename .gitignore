@@ -31,12 +31,23 @@ ENV/
 *.db-*
 
 # Frontend dependencies and build output
+<<<<<<< HEAD
+=======
+node_modules/
+>>>>>>> ec02679 (add: electron)
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/.turbo/
 frontend/coverage/
 
+<<<<<<< HEAD
+=======
+# Desktop runtime and packaging inputs generated locally
+vendor/python/*
+!vendor/python/.gitkeep
+
+>>>>>>> ec02679 (add: electron)
 # Logs
 *.log
 logs/
@@ -65,3 +76,8 @@ dist/
 
 
 AGENTS.md
+<<<<<<< HEAD
+=======
+
+./vendor/
+>>>>>>> ec02679 (add: electron)

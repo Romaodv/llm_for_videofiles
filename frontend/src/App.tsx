@@ -1,7 +1,15 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Cpu, Database, FileVideo, FolderOpen, Play, RefreshCcw, Save, Search, Send, Settings, SkipForward, Trash2, X } from "lucide-react";
 
+<<<<<<< HEAD
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+=======
+const API_BASE =
+  window.__LLM_FORFILES_API_BASE__ ??
+  (window.location.protocol === "http:" || window.location.protocol === "https:" ? window.location.origin : undefined) ??
+  import.meta.env.VITE_API_BASE_URL ??
+  "http://127.0.0.1:8000";
+>>>>>>> ec02679 (add: electron)
 
 type DocumentItem = {
   id: number;
@@ -148,8 +156,13 @@ export function App() {
 
   useEffect(() => {
     loadDocuments();
+<<<<<<< HEAD
     loadFolder();
     loadSecretStatus();
+=======
+    loadFolder(window.__LLM_FORFILES_HOME_DIR__);
+    loadSecretStatus().catch(showError);
+>>>>>>> ec02679 (add: electron)
   }, []);
 
   useEffect(() => {
@@ -260,11 +273,46 @@ export function App() {
   }
 
   async function loadFolder(nextPath?: string) {
+<<<<<<< HEAD
     const suffix = nextPath ? `?path=${encodeURIComponent(nextPath)}` : "";
     const result = await api<{ path: string; parent: string | null; entries: FileEntry[] }>(`/files/list${suffix}`);
     setFolder(result.path);
     setParent(result.parent);
     setEntries(result.entries);
+=======
+    try {
+      const suffix = nextPath ? `?path=${encodeURIComponent(nextPath)}` : "";
+      const result = await api<{ path: string; parent: string | null; entries: FileEntry[] }>(`/files/list${suffix}`);
+      setFolder(result.path);
+      setParent(result.parent);
+      setEntries(result.entries);
+    } catch (err) {
+      showError(err);
+      setFolder(nextPath ?? "");
+      setParent(null);
+      setEntries([]);
+    }
+  }
+
+  async function pickVideo() {
+    if (!window.llmForfilesDesktop?.pickVideo) return;
+    const selectedPath = await window.llmForfilesDesktop.pickVideo();
+    if (selectedPath) {
+      setPath(selectedPath);
+      const lastSlash = Math.max(selectedPath.lastIndexOf("/"), selectedPath.lastIndexOf("\\"));
+      if (lastSlash > 0) {
+        void loadFolder(selectedPath.slice(0, lastSlash));
+      }
+    }
+  }
+
+  async function pickFolder() {
+    if (!window.llmForfilesDesktop?.pickFolder) return;
+    const selectedPath = await window.llmForfilesDesktop.pickFolder();
+    if (selectedPath) {
+      await loadFolder(selectedPath);
+    }
+>>>>>>> ec02679 (add: electron)
   }
 
   async function loadTranscript(documentId: number) {
@@ -532,6 +580,12 @@ export function App() {
           </div>
           <div className="path-row">
             <input value={path} onChange={(event) => setPath(event.target.value)} placeholder="/caminho/video.mp4" />
+<<<<<<< HEAD
+=======
+            <button title="Selecionar video" onClick={() => void pickVideo()} type="button">
+              <FolderOpen size={16} />
+            </button>
+>>>>>>> ec02679 (add: electron)
             <button title="Transcrever e indexar" onClick={() => path.trim() && setTranscriptionOpen(true)} disabled={busy === "index" || !path.trim()}>
               {busy === "index" ? <RefreshCcw className="spin" size={16} /> : <Play size={16} />}
             </button>
@@ -541,6 +595,12 @@ export function App() {
             <button onClick={() => parent && loadFolder(parent)} disabled={!parent}>
               ..
             </button>
+<<<<<<< HEAD
+=======
+            <button onClick={() => void pickFolder()} type="button" title="Abrir pasta">
+              <FolderOpen size={14} />
+            </button>
+>>>>>>> ec02679 (add: electron)
             <span title={folder}>{folder}</span>
           </div>
           <div className="file-list">
