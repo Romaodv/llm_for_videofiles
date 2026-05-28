@@ -3,13 +3,6 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
 
-<<<<<<< HEAD
-createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
-=======
 declare global {
   interface Window {
     __LLM_FORFILES_API_BASE__?: string;
@@ -36,4 +29,3 @@ async function bootstrap() {
 }
 
 void bootstrap();
->>>>>>> ec02679 (add: electron)

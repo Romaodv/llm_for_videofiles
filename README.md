@@ -62,8 +62,6 @@ dist/llm-forfiles-portable
 
 Essa pasta inclui o backend, frontend buildado, landing launcher e scripts `start.sh`/`start.bat`. Ela nao inclui `node_modules`, `.local_data` nem videos indexados. Na primeira execucao no outro PC, o launcher prepara dependencias e inicia o app.
 
-<<<<<<< HEAD
-=======
 ## Desktop Electron
 
 Agora o projeto tambem pode rodar como app desktop standalone em Electron, sem abrir navegador nem usar a landing page do launcher.
@@ -130,7 +128,6 @@ Saidas esperadas do `electron-builder`:
 
 Observacao importante: para o instalador funcionar em outra maquina sem Python preinstalado, o `vendor/python` precisa ser preenchido antes do build. Em modo de desenvolvimento, o app pode usar o Python local do sistema.
 
->>>>>>> ec02679 (add: electron)
 ## Backend
 
 Instale dependencias:

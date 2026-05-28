@@ -12,13 +12,8 @@ app = FastAPI(title="LLM Forfiles Video RAG")
 
 app.add_middleware(
     CORSMiddleware,
-<<<<<<< HEAD
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
-    allow_credentials=True,
-=======
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "null"],
     allow_credentials=False,
->>>>>>> ec02679 (add: electron)
     allow_methods=["*"],
     allow_headers=["*"],
 )
