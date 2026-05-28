@@ -230,6 +230,10 @@ function createBackendRuntime({ app, log }) {
     fs.writeFileSync(destinationPath, Buffer.from(arrayBuffer));
   }
 
+  function psSingleQuote(value) {
+    return String(value).replace(/'/g, "''");
+  }
+
   async function installPortableFfmpegWindows(toolsRoot) {
     const ffmpegRoot = path.join(toolsRoot, "ffmpeg");
     const ffmpegExe = path.join(ffmpegRoot, "bin", "ffmpeg.exe");
@@ -245,9 +249,14 @@ function createBackendRuntime({ app, log }) {
 
     log.info(`Baixando FFmpeg portatil: ${ffmpegUrl}`);
     await downloadFile(ffmpegUrl, archivePath);
+    const expandArchiveCommand = [
+      `$archivePath = '${psSingleQuote(archivePath)}'`,
+      `$destinationPath = '${psSingleQuote(extractRoot)}'`,
+      "Expand-Archive -LiteralPath $archivePath -DestinationPath $destinationPath -Force",
+    ].join("; ");
     await runCommand(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force", archivePath, extractRoot],
+      ["-NoProfile", "-NonInteractive", "-Command", expandArchiveCommand],
       { cwd: resolveProjectRoot() }
     );
 

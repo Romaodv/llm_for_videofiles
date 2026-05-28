@@ -63,6 +63,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Local documentation exports
+docs/
+
 # Generated portable package output
 # Note: this also ignores Python build dist/ above.
 dist/
