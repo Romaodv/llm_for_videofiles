@@ -1,7 +1,6 @@
 from pathlib import Path
 from threading import Event, Lock, Thread
 import math
-import shutil
 import subprocess
 import tempfile
 import time
@@ -10,6 +9,7 @@ import httpx
 
 from backend.app.config import settings
 from backend.app.parsers.srt import SrtCue, cues_to_srt
+from backend.app.services.ffmpeg_runtime import resolve_ffmpeg, resolve_ffprobe
 from backend.app.services.progress import ProgressCallback
 from backend.app.services.secrets import PROVIDER_GROQ, get_secret
 
@@ -131,9 +131,7 @@ class TranscriptionService:
         if not api_key:
             raise RuntimeError("Groq API key nao configurada. Abra Config e salve a GROQ_API_KEY.")
 
-        ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg:
-            raise RuntimeError("ffmpeg nao encontrado no PATH. Necessario para comprimir audio antes de enviar para a Groq.")
+        ffmpeg = resolve_ffmpeg()
 
         settings.ensure_dirs()
         if progress:
@@ -273,7 +271,7 @@ class TranscriptionService:
         return cues, duration
 
     def _probe_duration(self, path: Path) -> float:
-        ffprobe = shutil.which("ffprobe")
+        ffprobe = resolve_ffprobe()
         if not ffprobe:
             return 0.0
         result = subprocess.run(

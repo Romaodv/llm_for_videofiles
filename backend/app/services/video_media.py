@@ -1,9 +1,9 @@
-import shutil
 import subprocess
 from pathlib import Path
 
 from backend.app.config import settings
 from backend.app.db.sqlite import get_connection
+from backend.app.services.ffmpeg_runtime import resolve_ffmpeg
 from backend.app.services.progress import ProgressCallback
 
 
@@ -43,9 +43,7 @@ def build_web_video(document_id: int, progress: ProgressCallback | None = None) 
         save_web_path(document_id, output_path)
         return {"document_id": document_id, "web_video_path": str(output_path), "status": "unchanged"}
 
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("ffmpeg nao encontrado no PATH. Necessario para converter video para H.264/AAC.")
+    ffmpeg = resolve_ffmpeg()
 
     temp_path = output_path.with_suffix(".tmp.mp4")
     if temp_path.exists():
